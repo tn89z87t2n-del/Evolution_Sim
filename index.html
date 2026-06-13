@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Neuro-Evolution · Artificial Life</title>
+<style>
+/* ============================================================
+   ŠTÝLY (CSS) — tmavá téma + glassmorphism
+   ============================================================ */
+:root{
+  --bg:#05070d;
+  --panel:rgba(18,24,38,0.55);
+  --panel-solid:#0d1320;
+  --stroke:rgba(120,160,255,0.18);
+  --text:#dde6ff;
+  --muted:#7c89a8;
+  --accent:#5cc8ff;
+  --accent2:#b98bff;
+  --good:#54e39a;
+  --bad:#ff6b8a;
+  --shadow:0 8px 32px rgba(0,0,0,0.5);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:"Segoe UI",system-ui,-apple-system,sans-serif;font-size:13px;}
+canvas{display:block;}
+#world{position:fixed;inset:0;cursor:grab;touch-action:none;}
+#world.dragging{cursor:grabbing;}
+
+/* ---- horný stavový riadok (stats bar) ---- */
+#statbar{
+  position:fixed;top:10px;left:50%;transform:translateX(-50%);
+  display:flex;gap:18px;align-items:center;
+  padding:8px 18px;border-radius:14px;
+  background:var(--panel);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--stroke);box-shadow:var(--shadow);
+  z-index:20;white-space:nowrap;font-variant-numeric:tabular-nums;
+}
+#statbar .item{display:flex;flex-direction:column;line-height:1.15;}
+#statbar .item b{font-size:15px;color:var(--accent);font-weight:600;}
+#statbar .item span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+
+/* ---- bočný panel ---- */
+#panel{
+  position:fixed;top:0;right:0;height:100%;width:320px;
+  display:flex;flex-direction:column;
+  background:var(--panel);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  border-left:1px solid var(--stroke);box-shadow:var(--shadow);
+  z-index:15;transition:transform .25s ease;
+}
+#panel.hidden{transform:translateX(320px);}
+#panel .scroll{overflow-y:auto;overflow-x:hidden;padding:16px 16px 40px;flex:1;}
+#panel h1{font-size:15px;font-weight:600;letter-spacing:.02em;
+  display:flex;align-items:center;gap:8px;margin-bottom:2px;}
+#panel h1 .dot{width:9px;height:9px;border-radius:50%;background:var(--good);
+  box-shadow:0 0 10px var(--good);}
+#panel .sub{font-size:10.5px;color:var(--muted);margin-bottom:14px;}
+.section{margin:14px 0;padding-top:12px;border-top:1px solid rgba(120,160,255,0.10);}
+.section .title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent2);
+  margin-bottom:10px;font-weight:600;}
+.ctrl{margin-bottom:11px;}
+.ctrl label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px;}
+.ctrl label b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;}
+input[type=range]{width:100%;height:4px;border-radius:3px;-webkit-appearance:none;appearance:none;
+  background:rgba(120,160,255,0.16);outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+  background:var(--accent);cursor:pointer;box-shadow:0 0 8px rgba(92,200,255,0.7);border:2px solid #0a0f1a;}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--accent);
+  cursor:pointer;border:2px solid #0a0f1a;}
+
+.btnrow{display:flex;gap:7px;flex-wrap:wrap;}
+button{font-family:inherit;font-size:11px;color:var(--text);cursor:pointer;
+  background:rgba(120,160,255,0.10);border:1px solid var(--stroke);border-radius:9px;
+  padding:8px 11px;transition:.15s;flex:1;min-width:fit-content;}
+button:hover{background:rgba(120,160,255,0.20);border-color:var(--accent);}
+button:active{transform:scale(.96);}
+button.on{background:rgba(92,200,255,0.25);border-color:var(--accent);color:#fff;}
+button.danger:hover{border-color:var(--bad);background:rgba(255,107,138,0.18);}
+.speedrow button{padding:8px 4px;}
+
+.toggle{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;color:var(--muted);
+  cursor:pointer;padding:5px 0;}
+.toggle .sw{width:38px;height:20px;border-radius:11px;background:rgba(120,160,255,0.16);position:relative;transition:.2s;flex:none;}
+.toggle .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#8696b8;transition:.2s;}
+.toggle.on .sw{background:rgba(92,200,255,0.5);}
+.toggle.on .sw::after{transform:translateX(18px);background:#fff;}
+
+/* ---- grafy ---- */
+.chart{margin-bottom:8px;}
+.chart .clabel{font-size:10px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:2px;}
+.chart .clabel b{color:var(--text);font-variant-numeric:tabular-nums;}
+.chart canvas{width:100%;height:46px;border-radius:7px;background:rgba(8,12,22,0.5);
+  border:1px solid rgba(120,160,255,0.08);display:block;}
+
+/* ---- panel vybraného tvora ---- */
+#inspect{display:none;}
+#inspect.show{display:block;}
+#nncanvas{width:100%;height:170px;border-radius:9px;background:rgba(6,10,18,0.7);
+  border:1px solid var(--stroke);display:block;margin-bottom:8px;}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;font-size:11px;}
+.kv div{display:flex;justify-content:space-between;background:rgba(120,160,255,0.06);
+  padding:5px 8px;border-radius:7px;}
+.kv div span{color:var(--muted);}
+.kv div b{color:var(--text);font-variant-numeric:tabular-nums;}
+.swatch{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:middle;margin-left:4px;
+  box-shadow:0 0 6px currentColor;}
+
+/* ---- prepínač panela / mobil ---- */
+#toggleBtn{position:fixed;top:10px;right:10px;z-index:25;width:40px;height:40px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;flex:none;
+  background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--stroke);box-shadow:var(--shadow);}
+#hint{position:fixed;bottom:12px;left:12px;z-index:10;font-size:10.5px;color:var(--muted);
+  background:var(--panel);backdrop-filter:blur(10px);padding:7px 12px;border-radius:10px;
+  border:1px solid var(--stroke);pointer-events:none;max-width:42vw;line-height:1.5;}
+::-webkit-scrollbar{width:8px;}
+::-webkit-scrollbar-thumb{background:rgba(120,160,255,0.2);border-radius:4px;}
+input[type=file]{display:none;}
+@media(max-width:640px){
+  #panel{width:88vw;}
+  #panel.hidden{transform:translateX(88vw);}
+  #hint{max-width:55vw;}
+  #statbar{gap:11px;padding:7px 11px;font-size:11px;left:10px;transform:none;}
+  #statbar .item b{font-size:13px;}
+}
+</style>
+</head>
+<body>
+
+<canvas id="world"></canvas>
+
+<!-- horný stavový riadok -->
+<div id="statbar">
+  <div class="item"><b id="sb_pop">0</b><span>Population</span></div>
+  <div class="item"><b id="sb_gen">0</b><span>Max gen</span></div>
+  <div class="item"><b id="sb_food">0</b><span>Food</span></div>
+  <div class="item"><b id="sb_fps">0</b><span>FPS</span></div>
+  <div class="item"><b id="sb_time">0:00</b><span>Sim time</span></div>
+</div>
+
+<button id="toggleBtn">☰</button>
+
+<div id="hint">Drag to pan · Wheel/pinch to zoom · Click a creature to inspect</div>
+
+<!-- bočný panel -->
+<aside id="panel">
+  <div class="scroll">
+    <h1><span class="dot"></span>Neuro-Evolution</h1>
+    <div class="sub">Artificial life · neural-network brains · natural selection</div>
+
+    <!-- ovládanie simulácie -->
+    <div class="section">
+      <div class="title">Simulation</div>
+      <div class="btnrow" style="margin-bottom:8px;">
+        <button id="btnPause">⏸ Pause</button>
+        <button id="btnReset" class="danger">⟲ Reset</button>
+      </div>
+      <div class="btnrow speedrow">
+        <button data-speed="1" class="on">1×</button>
+        <button data-speed="2">2×</button>
+        <button data-speed="5">5×</button>
+        <button data-speed="10">10×</button>
+      </div>
+    </div>
+
+    <!-- parametre sveta -->
+    <div class="section">
+      <div class="title">World parameters</div>
+      <div class="ctrl">
+        <label>Food spawn rate <b id="v_food">14.0</b>/s</label>
+        <input type="range" id="s_food" min="0" max="120" step="1" value="14">
+      </div>
+      <div class="ctrl">
+        <label>Mutation rate <b id="v_mut">10</b>%</label>
+        <input type="range" id="s_mut" min="0" max="60" step="1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>Move energy cost <b id="v_movecost">1.0</b>×</label>
+        <input type="range" id="s_movecost" min="0.1" max="3" step="0.1" value="1">
+      </div>
+      <div class="ctrl">
+        <label>Metabolism (idle cost) <b id="v_meta">1.0</b>×</label>
+        <input type="range" id="s_meta" min="0.1" max="3" step="0.1" value="1">
+      </div>
+      <div class="ctrl">
+        <label>Max population <b id="v_cap">600</b></label>
+        <input type="range" id="s_cap" min="50" max="1500" step="50" value="600">
+      </div>
+      <div class="toggle" id="t_hazard"><span>Hazards (poison)</span><div class="sw"></div></div>
+      <div class="toggle on" id="t_follow"><span>Follow selected</span><div class="sw"></div></div>
+      <div class="toggle" id="t_sensors"><span>Show sensor rays</span><div class="sw"></div></div>
+    </div>
+
+    <!-- živé grafy -->
+    <div class="section">
+      <div class="title">Live statistics</div>
+      <div class="chart"><div class="clabel">Population <b id="c_pop">0</b></div><canvas id="ch_pop"></canvas></div>
+      <div class="chart"><div class="clabel">Avg generation <b id="c_gen">0</b></div><canvas id="ch_gen"></canvas></div>
+      <div class="chart"><div class="clabel">Avg lifespan (s) <b id="c_life">0</b></div><canvas id="ch_life"></canvas></div>
+      <div class="chart"><div class="clabel">Food eaten / min <b id="c_eat">0</b></div><canvas id="ch_eat"></canvas></div>
+    </div>
+
+    <!-- vybraný tvor -->
+    <div class="section" id="inspect">
+      <div class="title">Selected creature <span id="i_swatch" class="swatch"></span></div>
+      <canvas id="nncanvas"></canvas>
+      <div class="kv">
+        <div><span>Generation</span><b id="i_gen">0</b></div>
+        <div><span>Age</span><b id="i_age">0s</b></div>
+        <div><span>Energy</span><b id="i_energy">0</b></div>
+        <div><span>Speed</span><b id="i_speed">0</b></div>
+        <div><span>Children</span><b id="i_kids">0</b></div>
+        <div><span>Lineage</span><b id="i_lin">0</b></div>
+      </div>
+      <div class="btnrow" style="margin-top:9px;">
+        <button id="btnDeselect">Deselect</button>
+      </div>
+    </div>
+
+    <!-- ulož / načítaj -->
+    <div class="section">
+      <div class="title">Persistence</div>
+      <div class="btnrow">
+        <button id="btnSave">💾 Save JSON</button>
+        <button id="btnLoad">📂 Load JSON</button>
+      </div>
+      <input type="file" id="fileInput" accept="application/json">
+    </div>
+
+    <div class="sub" style="margin-top:18px;opacity:.6;">
+      No explicit fitness function — surviving and reproducing <i>is</i> the selection.
+    </div>
+  </div>
+</aside>
+
+<script>
+"use strict";
+/* ============================================================
+   NEURO-EVOLUTION — umelý život s evolúciou neurónových sietí
+   Jediný súbor, bez závislostí. Sekcie:
+     1) NN        — neurónová sieť (od základu)
+     2) WORLD     — toroidálny svet + priestorová hash mriežka
+     3) CREATURE  — tvor, energetika, reprodukcia, mutácia
+     4) RENDER    — kreslenie sveta a tvorov, kamera
+     5) CHARTS    — malé živé grafy
+     6) UI        — ovládacie prvky, save/load
+     7) LOOP      — hlavná slučka (fyzika + render)
+   Komentáre po slovensky, identifikátory po anglicky.
+   ============================================================ */
+
+/* ---------- pomocné matematické funkcie ---------- */
+const TAU = Math.PI * 2;
+const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+const lerp = (a,b,t)=> a+(b-a)*t;
+const rand = (a,b)=> a+Math.random()*(b-a);
+let _g2cache=null;
+// Gaussovské náhodné číslo (Box-Muller, s cache druhej hodnoty)
+function gauss(){
+  if(_g2cache!==null){const v=_g2cache;_g2cache=null;return v;}
+  let u=0,v=0;
+  while(u===0)u=Math.random();
+  while(v===0)v=Math.random();
+  const r=Math.sqrt(-2*Math.log(u));
+  _g2cache=r*Math.sin(TAU*v);
+  return r*Math.cos(TAU*v);
+}
+// Najmenší rozdiel uhlov v rozsahu [-PI, PI]
+function angDiff(a){ a%=TAU; if(a>Math.PI)a-=TAU; else if(a<-Math.PI)a+=TAU; return a; }
+
+/* ============================================================
+   1) NN — NEURÓNOVÁ SIEŤ (feedforward, implementovaná od základu)
+   Architektúra: IN(7) -> HIDDEN(8, tanh) -> OUT(2, tanh)
+   Vstupy:  [dist_food, angle_food, dist_creat, angle_creat, energy, speed, bias]
+   Výstupy: [turn, accel]
+   Váhy:    jeden Float32Array na tvora (genóm).
+   ============================================================ */
+const NN_IN = 7, NN_HID = 8, NN_OUT = 2;
+// Počet váh: (in*hid + hid) + (hid*out + out)
+const NN_W_IH = NN_IN * NN_HID;        // váhy vstup->skrytá
+const NN_B_H  = NN_HID;                // biasy skrytej
+const NN_W_HO = NN_HID * NN_OUT;       // váhy skrytá->výstup
+const NN_B_O  = NN_OUT;                // biasy výstupu
+const GENOME_LEN = NN_W_IH + NN_B_H + NN_W_HO + NN_B_O; // = 82
+
+// Zdieľané buffery aktivácií (znovu používané — bez GC v slučke)
+const _hid = new Float32Array(NN_HID);
+const _out = new Float32Array(NN_OUT);
+
+// Náhodný genóm (xavier-ish škálovanie)
+function randomGenome(){
+  const g = new Float32Array(GENOME_LEN);
+  for(let i=0;i<GENOME_LEN;i++) g[i] = gauss()*0.8;
+  return g;
+}
+
+// Dopredný priechod. inputs: Float32Array(7). Vracia _out (turn, accel) v [-1,1].
+function nnForward(g, inputs){
+  let o = 0;
+  // vrstva vstup -> skrytá (tanh)
+  for(let h=0; h<NN_HID; h++){
+    let s = g[NN_W_IH + h]; // bias skrytého neurónu
+    const base = h*NN_IN;
+    for(let i=0;i<NN_IN;i++) s += g[base+i] * inputs[i];
+    _hid[h] = Math.tanh(s);
+  }
+  // vrstva skrytá -> výstup (tanh)
+  const woBase = NN_W_IH + NN_B_H;
+  const boBase = woBase + NN_W_HO;
+  for(o=0;o<NN_OUT;o++){
+    let s = g[boBase + o]; // bias výstupu
+    const base = woBase + o*NN_HID;
+    for(let h=0;h<NN_HID;h++) s += g[base+h] * _hid[h];
+    _out[o] = Math.tanh(s);
+  }
+  return _out;
+}
+
+// Mutácia kópie genómu. rate = pravdepodobnosť perturbácie na váhu.
+function mutateGenome(src, rate){
+  const g = new Float32Array(GENOME_LEN);
+  for(let i=0;i<GENOME_LEN;i++){
+    let w = src[i];
+    if(Math.random() < rate)       w += gauss()*0.5;   // malá gaussovská zmena
+    if(Math.random() < 0.01)       w  = gauss()*0.8;   // zriedkavý úplný reroll
+    g[i] = w;
+  }
+  return g;
+}
+
+/* ============================================================
+   2) WORLD — toroidálny svet + priestorová hash mriežka
+   Všetky susedské dotazy idú cez mriežku (žiadne O(n²)).
+   ============================================================ */
+const WORLD_W = 2600, WORLD_H = 2600;   // veľkosť sveta (väčšia ako viewport)
+const CELL = 80;                        // veľkosť bunky hash mriežky
+const GRID_W = Math.ceil(WORLD_W/CELL);
+const GRID_H = Math.ceil(WORLD_H/CELL);
+
+// Toroidálne zabalenie súradníc
+function wrap(v, max){ v%=max; if(v<0)v+=max; return v; }
+// Toroidálny rozdiel po jednej osi (najkratšia cesta)
+function wrapDelta(d, max){ if(d> max*0.5)d-=max; else if(d<-max*0.5)d+=max; return d; }
+
+// Priestorová hash mriežka: bucket = pole indexov do daného poľa entít.
+class SpatialHash{
+  constructor(){
+    this.buckets = new Array(GRID_W*GRID_H);
+    for(let i=0;i<this.buckets.length;i++) this.buckets[i] = [];
+  }
+  clear(){ const b=this.buckets; for(let i=0;i<b.length;i++) if(b[i].length) b[i].length=0; }
+  _cell(x,y){ return ((y/CELL)|0)*GRID_W + ((x/CELL)|0); }
+  insert(x,y,idx){ this.buckets[this._cell(x,y)].push(idx); }
+}
+
+/* ============================================================
+   FOOD FIELD — hustota jedla cez value-noise pole, ktoré pomaly drift-uje
+   Tvory sa musia adaptovať, keď sa zhluky presúvajú.
+   ============================================================ */
+const NOISE_RES = 16; // rozlíšenie šumovej mriežky
+const noiseGrid = new Float32Array((NOISE_RES+1)*(NOISE_RES+1));
+function regenNoise(){ for(let i=0;i<noiseGrid.length;i++) noiseGrid[i]=Math.random(); }
+regenNoise();
+function smooth(t){ return t*t*(3-2*t); }
+// Vzorka hustoty jedla v [0,1] na svetových súradniciach, s časovým driftom.
+function foodDensity(x, y, t){
+  // drift: posúvame vzorkovacie súradnice v čase
+  const fx = (x/WORLD_W + t*0.006) * NOISE_RES;
+  const fy = (y/WORLD_H + Math.sin(t*0.05)*0.05 + t*0.004) * NOISE_RES;
+  let x0 = Math.floor(fx)%NOISE_RES; if(x0<0)x0+=NOISE_RES;
+  let y0 = Math.floor(fy)%NOISE_RES; if(y0<0)y0+=NOISE_RES;
+  const x1=(x0+1)%NOISE_RES, y1=(y0+1)%NOISE_RES;
+  const tx=smooth(fx-Math.floor(fx)), ty=smooth(fy-Math.floor(fy));
+  const W=NOISE_RES+1;
+  const a=noiseGrid[y0*W+x0], b=noiseGrid[y0*W+x1];
+  const c=noiseGrid[y1*W+x0], d=noiseGrid[y1*W+x1];
+  const top=lerp(a,b,tx), bot=lerp(c,d,tx);
+  let v = lerp(top,bot,ty);
+  // zvýraznenie kontrastu -> jasné zhluky
+  v = v*v*(v*1.4);
+  return clamp(v,0,1);
+}
+
+/* ============================================================
+   3) CREATURE — dátovo orientované polia (SoA) pre výkon
+   ============================================================ */
+const MAX_CREAT = 2000;   // tvrdý strop alokácie
+const MAX_FOOD  = 6000;   // tvrdý strop alokácie
+
+const cre = {
+  n: 0,
+  x:new Float32Array(MAX_CREAT), y:new Float32Array(MAX_CREAT),
+  vx:new Float32Array(MAX_CREAT), vy:new Float32Array(MAX_CREAT),
+  heading:new Float32Array(MAX_CREAT),
+  energy:new Float32Array(MAX_CREAT),
+  age:new Float32Array(MAX_CREAT),
+  gen:new Int32Array(MAX_CREAT),
+  kids:new Int32Array(MAX_CREAT),
+  lineage:new Int32Array(MAX_CREAT),   // ID rodovej línie (na farbu/klastrovanie)
+  hue:new Float32Array(MAX_CREAT),     // farba (HSL hue, dedená s mutáciou)
+  genome:new Array(MAX_CREAT),         // Float32Array(GENOME_LEN)
+  // posledné senzorické/výstupné hodnoty (pre vizualizáciu a oči)
+  sFoodA:new Float32Array(MAX_CREAT),  // uhol k jedlu (relatívny)
+  sCreA:new Float32Array(MAX_CREAT),   // uhol k tvorovi (relatívny)
+  inBuf:new Array(MAX_CREAT),          // posledné vstupy NN (na vizualizáciu)
+};
+let lineageCounter = 0;
+
+// Jedlo a jed (poison): jedno pole, druh odlíšený príznakom.
+const food = {
+  n:0,
+  x:new Float32Array(MAX_FOOD), y:new Float32Array(MAX_FOOD),
+  poison:new Uint8Array(MAX_FOOD),
+  dead:new Uint8Array(MAX_FOOD),   // príznak "zjedené" — kompakcia až po kroku
+};
+
+const creHash  = new SpatialHash();
+const foodHash = new SpatialHash();
+
+// Pridaj tvora; vráti index alebo -1.
+function spawnCreature(x,y,genome,gen,hue,lineage){
+  if(cre.n>=MAX_CREAT) return -1;
+  const i=cre.n++;
+  cre.x[i]=x; cre.y[i]=y;
+  cre.vx[i]=0; cre.vy[i]=0;
+  cre.heading[i]=rand(0,TAU);
+  cre.energy[i]=ENERGY_START;
+  cre.age[i]=0; cre.gen[i]=gen; cre.kids[i]=0;
+  cre.lineage[i]=lineage; cre.hue[i]=hue;
+  cre.genome[i]=genome;
+  cre.sFoodA[i]=0; cre.sCreA[i]=0;
+  cre.inBuf[i]=new Float32Array(NN_IN);
+  return i;
+}
+
+// Odstráň tvora i (swap-and-pop, O(1)). Udržuje výber konzistentný.
+function killCreature(i){
+  const last=--cre.n;
+  if(selected===i) selected=-1;        // vybraný tvor zomrel
+  if(i!==last){
+    cre.x[i]=cre.x[last]; cre.y[i]=cre.y[last];
+    cre.vx[i]=cre.vx[last]; cre.vy[i]=cre.vy[last];
+    cre.heading[i]=cre.heading[last];
+    cre.energy[i]=cre.energy[last]; cre.age[i]=cre.age[last];
+    cre.gen[i]=cre.gen[last]; cre.kids[i]=cre.kids[last];
+    cre.lineage[i]=cre.lineage[last]; cre.hue[i]=cre.hue[last];
+    cre.genome[i]=cre.genome[last];
+    cre.sFoodA[i]=cre.sFoodA[last]; cre.sCreA[i]=cre.sCreA[last];
+    cre.inBuf[i]=cre.inBuf[last];
+    if(selected===last) selected=i;    // vybraný bol presunutý z konca na i
+  }
+}
+
+function spawnFood(x,y,poison){
+  if(food.n>=MAX_FOOD) return;
+  const i=food.n++;
+  food.x[i]=x; food.y[i]=y; food.poison[i]=poison?1:0; food.dead[i]=0;
+}
+// Kompakcia jedla — odstráni všetky položky označené ako zjedené (po kroku).
+function compactFood(){
+  for(let i=0;i<food.n;i++){
+    if(food.dead[i]){
+      const last=--food.n;
+      food.x[i]=food.x[last]; food.y[i]=food.y[last];
+      food.poison[i]=food.poison[last]; food.dead[i]=food.dead[last];
+      i--;
+    }
+  }
+}
+
+/* ---------- parametre energetiky / evolúcie ---------- */
+const ENERGY_START   = 80;
+const ENERGY_REPRO   = 110;   // prah reprodukcie
+const ENERGY_MAX     = 200;
+const FOOD_ENERGY    = 36;
+const POISON_DAMAGE  = 45;
+const EAT_RADIUS     = 12;
+const MAX_SPEED      = 70;     // px/s
+const ACCEL_FORCE    = 160;
+const TURN_RATE      = 4.0;    // rad/s pri plnom výstupe
+const SENSE_RADIUS   = 260;    // dosah senzorov
+const MIN_POP        = 40;     // imigračný práh — svet nikdy úplne nevymrie
+
+/* ---------- nastaviteľné parametre (z UI) ---------- */
+const P = {
+  foodRate: 14,     // jedál za sekundu
+  mutation: 0.10,
+  moveCost: 1.0,
+  metabolism: 1.0,
+  cap: 600,
+  hazards: false,
+  follow: true,
+  sensors: false,
+  speed: 1,
+  paused: false,
+};
+
+/* ============================================================
+   FYZIKA / KROK SIMULÁCIE
+   ============================================================ */
+let simTime = 0;          // uplynulý simulačný čas (s)
+let maxGen = 0;
+let foodEatenWindow = 0;  // počítadlo zjedeného jedla (pre graf/min)
+
+// Prestavanie hash mriežok z aktuálnych pozícií.
+function rebuildHashes(){
+  creHash.clear();
+  for(let i=0;i<cre.n;i++) creHash.insert(cre.x[i],cre.y[i],i);
+  foodHash.clear();
+  for(let i=0;i<food.n;i++) foodHash.insert(food.x[i],food.y[i],i);
+}
+
+// Nájdi najbližšie jedlo (nie jed) k bodu cez mriežku. Vracia index alebo -1.
+let _nfDist=0, _nfDx=0, _nfDy=0;
+function nearestFood(px,py){
+  const r=SENSE_RADIUS, r2=r*r;
+  const cx=(px/CELL)|0, cy=(py/CELL)|0;
+  const span=Math.ceil(r/CELL);
+  let best=-1, bestD=r2;
+  for(let gy=-span;gy<=span;gy++){
+    for(let gx=-span;gx<=span;gx++){
+      let bx=(cx+gx)%GRID_W; if(bx<0)bx+=GRID_W;
+      let by=(cy+gy)%GRID_H; if(by<0)by+=GRID_H;
+      const bucket=foodHash.buckets[by*GRID_W+bx];
+      for(let k=0;k<bucket.length;k++){
+        const j=bucket[k];
+        if(food.poison[j]||food.dead[j]) continue;
+        let dx=wrapDelta(food.x[j]-px,WORLD_W);
+        let dy=wrapDelta(food.y[j]-py,WORLD_H);
+        const d=dx*dx+dy*dy;
+        if(d<bestD){ bestD=d; best=j; _nfDist=Math.sqrt(d); _nfDx=dx; _nfDy=dy; }
+      }
+    }
+  }
+  return best;
+}
+
+// Nájdi najbližšieho iného tvora cez mriežku.
+let _ncDist=0, _ncDx=0, _ncDy=0;
+function nearestCreature(px,py,self){
+  const r=SENSE_RADIUS, r2=r*r;
+  const cx=(px/CELL)|0, cy=(py/CELL)|0;
+  const span=Math.ceil(r/CELL);
+  let best=-1, bestD=r2;
+  for(let gy=-span;gy<=span;gy++){
+    for(let gx=-span;gx<=span;gx++){
+      let bx=(cx+gx)%GRID_W; if(bx<0)bx+=GRID_W;
+      let by=(cy+gy)%GRID_H; if(by<0)by+=GRID_H;
+      const bucket=creHash.buckets[by*GRID_W+bx];
+      for(let k=0;k<bucket.length;k++){
+        const j=bucket[k];
+        if(j===self) continue;
+        let dx=wrapDelta(cre.x[j]-px,WORLD_W);
+        let dy=wrapDelta(cre.y[j]-py,WORLD_H);
+        const d=dx*dx+dy*dy;
+        if(d<bestD){ bestD=d; best=j; _ncDist=Math.sqrt(d); _ncDx=dx; _ncDy=dy; }
+      }
+    }
+  }
+  return best;
+}
+
+// Jeden fyzikálny krok (dt v sekundách).
+function step(dt){
+  simTime += dt;
+  rebuildHashes();
+
+  // --- spawn jedla podľa noise hustoty (rejection sampling) ---
+  let toSpawn = P.foodRate * dt;
+  // akumulátor zlomkových jedál
+  spawnAcc += toSpawn;
+  let spawnCount = Math.floor(spawnAcc);
+  spawnAcc -= spawnCount;
+  for(let s=0;s<spawnCount;s++){
+    // skús pár kandidátov, vyber podľa hustoty
+    for(let tries=0;tries<6;tries++){
+      const x=Math.random()*WORLD_W, y=Math.random()*WORLD_H;
+      if(Math.random() < foodDensity(x,y,simTime)){
+        const poison = P.hazards && Math.random()<0.14;
+        spawnFood(x,y,poison);
+        break;
+      }
+    }
+  }
+
+  // --- aktualizácia tvorov ---
+  for(let i=0;i<cre.n;i++){
+    // senzory: najbližšie jedlo a tvor
+    const fi = nearestFood(cre.x[i],cre.y[i]);
+    let fdist=1, fang=0;
+    if(fi!==-1){
+      fdist = _nfDist/SENSE_RADIUS;
+      fang  = angDiff(Math.atan2(_nfDy,_nfDx) - cre.heading[i]);
+    }
+    const ci = nearestCreature(cre.x[i],cre.y[i],i);
+    let cdist=1, cang=0;
+    if(ci!==-1){
+      cdist = _ncDist/SENSE_RADIUS;
+      cang  = angDiff(Math.atan2(_ncDy,_ncDx) - cre.heading[i]);
+    }
+    cre.sFoodA[i] = fi!==-1 ? fang : NaN;
+    cre.sCreA[i]  = ci!==-1 ? cang : NaN;
+
+    const speed = Math.hypot(cre.vx[i],cre.vy[i]);
+
+    // vstupy NN (normalizované)
+    const inp = cre.inBuf[i];
+    inp[0] = 1-fdist;                 // blízkosť jedla (1=blízko)
+    inp[1] = fang/Math.PI;            // uhol k jedlu
+    inp[2] = 1-cdist;                 // blízkosť tvora
+    inp[3] = cang/Math.PI;            // uhol k tvorovi
+    inp[4] = cre.energy[i]/ENERGY_MAX;// energia
+    inp[5] = speed/MAX_SPEED;         // vlastná rýchlosť
+    inp[6] = 1;                       // bias
+
+    // dopredný priechod
+    const out = nnForward(cre.genome[i], inp);
+    const turn  = out[0];   // [-1,1]
+    const accel = out[1];   // [-1,1]
+
+    // aplikuj otočenie a zrýchlenie
+    cre.heading[i] += turn * TURN_RATE * dt;
+    const a = Math.max(0,accel) * ACCEL_FORCE; // ťah len dopredu
+    cre.vx[i] += Math.cos(cre.heading[i]) * a * dt;
+    cre.vy[i] += Math.sin(cre.heading[i]) * a * dt;
+
+    // obmedz rýchlosť + mierne tlmenie
+    let sp = Math.hypot(cre.vx[i],cre.vy[i]);
+    if(sp>MAX_SPEED){ const k=MAX_SPEED/sp; cre.vx[i]*=k; cre.vy[i]*=k; sp=MAX_SPEED; }
+    cre.vx[i]*=0.94; cre.vy[i]*=0.94;
+
+    // pohyb + toroidálne zabalenie
+    cre.x[i]=wrap(cre.x[i]+cre.vx[i]*dt, WORLD_W);
+    cre.y[i]=wrap(cre.y[i]+cre.vy[i]*dt, WORLD_H);
+
+    // energetika: pohyb stojí ~ rýchlosť², existencia stojí konštantu
+    const moveC = (sp*sp)/(MAX_SPEED*MAX_SPEED) * 6 * P.moveCost;
+    const baseC = 2 * P.metabolism;
+    cre.energy[i] -= (moveC + baseC) * dt;
+    cre.age[i] += dt;
+
+    // jedenie: kontrola jedla v dosahu (cez mriežku, lokálne bunky)
+    eatNearby(i);
+
+    // smrť
+    if(cre.energy[i] <= 0){
+      recordDeath(cre.age[i]);
+      if(selected===i) selected=-1;
+      killCreature(i);
+      i--; continue;
+    }
+
+    // reprodukcia (nepohlavná) pri prahu a pod stropom populácie
+    if(cre.energy[i] >= ENERGY_REPRO && cre.n < P.cap){
+      reproduce(i);
+    }
+  }
+
+  // kompakcia zjedeného jedla až teraz (počas kroku ostávajú indexy v mriežke platné)
+  compactFood();
+
+  // imigrácia: ak populácia klesne pod prah, pridaj čerstvých tvorov s náhodným mozgom.
+  // Zabezpečuje, že evolúcia má vždy substrát a svet nikdy úplne nevymrie.
+  while(cre.n < MIN_POP){
+    const x=Math.random()*WORLD_W, y=Math.random()*WORLD_H;
+    spawnCreature(x,y,randomGenome(),0,Math.random()*360,lineageCounter++);
+  }
+}
+let spawnAcc = 0;
+
+// Zjedz jedlo/jed v okolí tvora i. Zjedené iba označíme (food.dead) — kompakcia po kroku.
+function eatNearby(i){
+  const px=cre.x[i], py=cre.y[i];
+  const cx=(px/CELL)|0, cy=(py/CELL)|0;
+  const r2=EAT_RADIUS*EAT_RADIUS;
+  for(let gy=-1;gy<=1;gy++){
+    for(let gx=-1;gx<=1;gx++){
+      let bx=(cx+gx)%GRID_W; if(bx<0)bx+=GRID_W;
+      let by=(cy+gy)%GRID_H; if(by<0)by+=GRID_H;
+      const bucket=foodHash.buckets[by*GRID_W+bx];
+      for(let k=0;k<bucket.length;k++){
+        const j=bucket[k];
+        if(food.dead[j]) continue;
+        let dx=wrapDelta(food.x[j]-px,WORLD_W);
+        let dy=wrapDelta(food.y[j]-py,WORLD_H);
+        if(dx*dx+dy*dy < r2){
+          if(food.poison[j]){
+            cre.energy[i] -= POISON_DAMAGE;
+          }else{
+            cre.energy[i] = Math.min(ENERGY_MAX, cre.energy[i]+FOOD_ENERGY);
+            foodEatenWindow++;
+          }
+          food.dead[j]=1; // označ; reálne odstránenie urobí compactFood()
+        }
+      }
+    }
+  }
+}
+
+// Reprodukcia: rozdelí energiu, mutuje genóm a farbu.
+function reproduce(i){
+  const childGenome = mutateGenome(cre.genome[i], P.mutation);
+  const halfE = cre.energy[i]*0.5;
+  cre.energy[i] = halfE;
+  // farba sa dedí s malou mutáciou (rody sa vizuálne rozlišujú)
+  let hue = cre.hue[i] + gauss()*8;
+  hue = ((hue%360)+360)%360;
+  const ng = cre.gen[i]+1;
+  if(ng>maxGen) maxGen=ng;
+  const ang=rand(0,TAU), off=14;
+  const nx=wrap(cre.x[i]+Math.cos(ang)*off,WORLD_W);
+  const ny=wrap(cre.y[i]+Math.sin(ang)*off,WORLD_H);
+  const idx=spawnCreature(nx,ny,childGenome,ng,hue,cre.lineage[i]);
+  if(idx!==-1){ cre.energy[idx]=halfE; cre.kids[i]++; }
+}
+
+/* ============================================================
+   ŠTATISTIKY — kĺzavé okná pre grafy
+   ============================================================ */
+const HIST = 240; // počet vzoriek histórie grafov
+const hist = {
+  pop:new Float32Array(HIST), gen:new Float32Array(HIST),
+  life:new Float32Array(HIST), eat:new Float32Array(HIST),
+  head:0, count:0,
+};
+let deathCount=0, deathLifeSum=0; // pre priemernú dĺžku života
+function recordDeath(age){ deathCount++; deathLifeSum+=age; }
+
+let statTimer=0;
+function sampleStats(dt){
+  statTimer+=dt;
+  if(statTimer>=1.0){ // vzorka raz za simulačnú sekundu
+    statTimer-=1.0;
+    let gsum=0; for(let i=0;i<cre.n;i++) gsum+=cre.gen[i];
+    const avgGen = cre.n? gsum/cre.n : 0;
+    const avgLife = deathCount? deathLifeSum/deathCount : 0;
+    const h=hist.head;
+    hist.pop[h]=cre.n;
+    hist.gen[h]=avgGen;
+    hist.life[h]=avgLife;
+    hist.eat[h]=foodEatenWindow*60; // za minútu (vzorka za 1s)
+    hist.head=(h+1)%HIST;
+    if(hist.count<HIST) hist.count++;
+    foodEatenWindow=0;
+    deathCount=0; deathLifeSum=0;
+  }
+}
+
+/* ============================================================
+   4) RENDER — kamera, svet, tvory
+   ============================================================ */
+const canvas = document.getElementById('world');
+const ctx = canvas.getContext('2d');
+let DPR = Math.min(window.devicePixelRatio||1, 2);
+const cam = { x:WORLD_W/2, y:WORLD_H/2, zoom:0.5, tzoom:0.5 };
+
+function resize(){
+  DPR = Math.min(window.devicePixelRatio||1, 2);
+  canvas.width = innerWidth*DPR;
+  canvas.height = innerHeight*DPR;
+  canvas.style.width = innerWidth+'px';
+  canvas.style.height = innerHeight+'px';
+}
+addEventListener('resize', resize);
+resize();
+
+// Prevod sveta -> obrazovka (s ohľadom na toroidálne opakovanie pri kreslení).
+function render(){
+  const W=canvas.width, H=canvas.height;
+  ctx.setTransform(1,0,0,1,0,0);
+  // pozadie s jemným vinetovaním
+  ctx.fillStyle = '#05070d';
+  ctx.fillRect(0,0,W,H);
+
+  cam.zoom = lerp(cam.zoom, cam.tzoom, 0.18);
+  const z = cam.zoom*DPR;
+
+  // sledovanie vybraného tvora
+  if(P.follow && selected!==-1 && selected<cre.n){
+    cam.x = lerp(cam.x, cre.x[selected], 0.12);
+    cam.y = lerp(cam.y, cre.y[selected], 0.12);
+  }
+
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  ctx.scale(z,z);
+  ctx.translate(-cam.x, -cam.y);
+
+  // viditeľný obdĺžnik vo svetových súradniciach
+  const halfW=(W/2)/z, halfH=(H/2)/z;
+  const viewL=cam.x-halfW, viewR=cam.x+halfW, viewT=cam.y-halfH, viewB=cam.y+halfH;
+
+  drawWorldBorder();
+  drawFoodDensity(viewL,viewR,viewT,viewB);
+
+  // kresli s toroidálnym opakovaním: posuny -1,0,+1 po oboch osiach
+  for(let ox=-1;ox<=1;ox++){
+    for(let oy=-1;oy<=1;oy++){
+      const sx=ox*WORLD_W, sy=oy*WORLD_H;
+      drawTile(sx,sy,viewL,viewR,viewT,viewB);
+    }
+  }
+
+  ctx.restore();
+
+  if(P.sensors && selected!==-1 && selected<cre.n) drawSensors();
+}
+
+// Ohraničenie sveta (jemná mriežka)
+function drawWorldBorder(){
+  ctx.lineWidth = 2/cam.zoom;
+  ctx.strokeStyle='rgba(92,200,255,0.12)';
+  ctx.strokeRect(0,0,WORLD_W,WORLD_H);
+}
+
+// Vizualizácia hustoty jedla ako jemné svetelné fľaky (lacné, hrubé vzorkovanie).
+let densityCanvas=document.createElement('canvas');
+let densityCtx=densityCanvas.getContext('2d');
+const DENS_N=48;
+densityCanvas.width=DENS_N; densityCanvas.height=DENS_N;
+let densAccum=0;
+function updateDensityTexture(){
+  const img=densityCtx.createImageData(DENS_N,DENS_N);
+  for(let yy=0;yy<DENS_N;yy++){
+    for(let xx=0;xx<DENS_N;xx++){
+      const wx=(xx+0.5)/DENS_N*WORLD_W, wy=(yy+0.5)/DENS_N*WORLD_H;
+      const d=foodDensity(wx,wy,simTime);
+      const idx=(yy*DENS_N+xx)*4;
+      img.data[idx]=40; img.data[idx+1]=120; img.data[idx+2]=90;
+      img.data[idx+3]=d*42; // jemná alfa
+    }
+  }
+  densityCtx.putImageData(img,0,0);
+}
+function drawFoodDensity(){
+  ctx.imageSmoothingEnabled=true;
+  ctx.globalAlpha=1;
+  ctx.drawImage(densityCanvas,0,0,WORLD_W,WORLD_H);
+}
+
+// Kresli jednu toroidálnu dlaždicu (jedlo + tvory) s posunom (sx,sy).
+function drawTile(sx,sy,viewL,viewR,viewT,viewB){
+  ctx.save();
+  ctx.translate(sx,sy);
+
+  // --- jedlo / jed ---
+  const fr=3.0;
+  for(let i=0;i<food.n;i++){
+    const x=food.x[i], y=food.y[i];
+    const wx=x+sx, wy=y+sy;
+    if(wx<viewL-10||wx>viewR+10||wy<viewT-10||wy>viewB+10) continue;
+    if(food.poison[i]){
+      ctx.fillStyle='#ff5d6c';
+      ctx.beginPath(); ctx.arc(x,y,fr+0.5,0,TAU); ctx.fill();
+    }else{
+      ctx.fillStyle='#7df0a8';
+      ctx.beginPath(); ctx.arc(x,y,fr,0,TAU); ctx.fill();
+    }
+  }
+
+  // --- tvory ---
+  for(let i=0;i<cre.n;i++){
+    const x=cre.x[i], y=cre.y[i];
+    const wx=x+sx, wy=y+sy;
+    if(wx<viewL-40||wx>viewR+40||wy<viewT-40||wy>viewB+40) continue;
+    drawCreature(i,x,y);
+  }
+  ctx.restore();
+}
+
+// Jeden tvor: svetlý žiariaci kruh, smerník, "oči" k senzorom.
+function drawCreature(i,x,y){
+  const e=cre.energy[i];
+  const r = 4 + (e/ENERGY_MAX)*5;       // veľkosť mierne rastie s energiou
+  const hue=cre.hue[i];
+  const sel = (i===selected);
+
+  // žiara
+  const glow = ctx.createRadialGradient(x,y,0,x,y,r*2.6);
+  glow.addColorStop(0, `hsla(${hue},85%,65%,0.55)`);
+  glow.addColorStop(1, `hsla(${hue},85%,55%,0)`);
+  ctx.fillStyle=glow;
+  ctx.beginPath(); ctx.arc(x,y,r*2.6,0,TAU); ctx.fill();
+
+  // telo
+  ctx.fillStyle=`hsl(${hue},80%,62%)`;
+  ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill();
+
+  // smerník (kam je tvor otočený)
+  const hx=Math.cos(cre.heading[i]), hy=Math.sin(cre.heading[i]);
+  ctx.strokeStyle=`hsla(${hue},90%,82%,0.9)`;
+  ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+hx*r*1.8,y+hy*r*1.8); ctx.stroke();
+
+  // oči — malé bodky natočené k senzorom (jedlo / tvor)
+  ctx.fillStyle='rgba(255,255,255,0.92)';
+  const ang=cre.heading[i];
+  const fa=cre.sFoodA[i];
+  if(!isNaN(fa)){
+    const ea=ang+fa, ed=r*0.6;
+    ctx.beginPath(); ctx.arc(x+Math.cos(ea)*ed, y+Math.sin(ea)*ed, r*0.22,0,TAU); ctx.fill();
+  }
+  const ca=cre.sCreA[i];
+  if(!isNaN(ca)){
+    ctx.fillStyle='rgba(255,210,150,0.85)';
+    const ea=ang+ca, ed=r*0.6;
+    ctx.beginPath(); ctx.arc(x+Math.cos(ea)*ed, y+Math.sin(ea)*ed, r*0.18,0,TAU); ctx.fill();
+  }
+
+  // zvýraznenie výberu
+  if(sel){
+    ctx.strokeStyle='#ffffff';
+    ctx.lineWidth=2/cam.zoom;
+    ctx.beginPath(); ctx.arc(x,y,r+6/cam.zoom,0,TAU); ctx.stroke();
+  }
+}
+
+// Senzorové lúče vybraného tvora (na obrazovkových súradniciach, mimo world transformu).
+function drawSensors(){
+  const i=selected;
+  const sp=worldToScreen(cre.x[i],cre.y[i]);
+  const z=cam.zoom*DPR;
+  ctx.lineWidth=1.2;
+  const ang=cre.heading[i];
+  if(!isNaN(cre.sFoodA[i])){
+    ctx.strokeStyle='rgba(125,240,168,0.5)';
+    const a=ang+cre.sFoodA[i];
+    ctx.beginPath(); ctx.moveTo(sp.x,sp.y);
+    ctx.lineTo(sp.x+Math.cos(a)*SENSE_RADIUS*z, sp.y+Math.sin(a)*SENSE_RADIUS*z); ctx.stroke();
+  }
+  if(!isNaN(cre.sCreA[i])){
+    ctx.strokeStyle='rgba(255,200,140,0.45)';
+    const a=ang+cre.sCreA[i];
+    ctx.beginPath(); ctx.moveTo(sp.x,sp.y);
+    ctx.lineTo(sp.x+Math.cos(a)*SENSE_RADIUS*z, sp.y+Math.sin(a)*SENSE_RADIUS*z); ctx.stroke();
+  }
+}
+
+function worldToScreen(x,y){
+  const z=cam.zoom*DPR;
+  return { x:(x-cam.x)*z + canvas.width/2, y:(y-cam.y)*z + canvas.height/2 };
+}
+function screenToWorld(sx,sy){
+  const z=cam.zoom*DPR;
+  return { x:(sx*DPR-canvas.width/2)/z + cam.x, y:(sy*DPR-canvas.height/2)/z + cam.y };
+}
+
+/* ============================================================
+   5) CHARTS — malé živé grafy (bez knižníc)
+   ============================================================ */
+function setupChart(id){
+  const c=document.getElementById(id);
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  c.width=c.clientWidth*dpr; c.height=c.clientHeight*dpr;
+  return {c, ctx:c.getContext('2d'), dpr};
+}
+let charts=null;
+function initCharts(){
+  charts={
+    pop:setupChart('ch_pop'), gen:setupChart('ch_gen'),
+    life:setupChart('ch_life'), eat:setupChart('ch_eat'),
+  };
+}
+function drawChart(ch, arr, color, fmt){
+  const {ctx:g,c}=ch; const W=c.width,H=c.height;
+  g.clearRect(0,0,W,H);
+  const n=hist.count; if(n<2) return;
+  // nájdi max pre škálu
+  let mx=1e-6;
+  for(let k=0;k<n;k++){ const idx=(hist.head-n+k+HIST)%HIST; if(arr[idx]>mx)mx=arr[idx]; }
+  mx*=1.15;
+  // výplň pod krivkou
+  g.beginPath();
+  for(let k=0;k<n;k++){
+    const idx=(hist.head-n+k+HIST)%HIST;
+    const x=(k/(n-1))*W;
+    const y=H-(arr[idx]/mx)*H;
+    if(k===0) g.moveTo(x,y); else g.lineTo(x,y);
+  }
+  g.lineTo(W,H); g.lineTo(0,H); g.closePath();
+  g.fillStyle=color+'22'; g.fill();
+  // krivka
+  g.beginPath();
+  for(let k=0;k<n;k++){
+    const idx=(hist.head-n+k+HIST)%HIST;
+    const x=(k/(n-1))*W;
+    const y=H-(arr[idx]/mx)*H;
+    if(k===0) g.moveTo(x,y); else g.lineTo(x,y);
+  }
+  g.strokeStyle=color; g.lineWidth=1.6*ch.dpr; g.stroke();
+}
+function renderCharts(){
+  if(!charts) return;
+  drawChart(charts.pop, hist.pop, '#5cc8ff');
+  drawChart(charts.gen, hist.gen, '#b98bff');
+  drawChart(charts.life, hist.life, '#54e39a');
+  drawChart(charts.eat, hist.eat, '#ffb65c');
+  // posledné hodnoty
+  const last=(arr)=>{ if(hist.count===0)return 0; return arr[(hist.head-1+HIST)%HIST]; };
+  document.getElementById('c_pop').textContent=Math.round(last(hist.pop));
+  document.getElementById('c_gen').textContent=last(hist.gen).toFixed(1);
+  document.getElementById('c_life').textContent=last(hist.life).toFixed(1);
+  document.getElementById('c_eat').textContent=Math.round(last(hist.eat));
+}
+
+/* ============================================================
+   NN VIZUALIZÁCIA — sieť vybraného tvora, aktivácie pulzujú
+   ============================================================ */
+const nnCanvas=document.getElementById('nncanvas');
+let nnCtx=nnCanvas.getContext('2d');
+function setupNNCanvas(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  nnCanvas.width=nnCanvas.clientWidth*dpr;
+  nnCanvas.height=nnCanvas.clientHeight*dpr;
+  return dpr;
+}
+let nnDpr=1;
+const NN_LABELS_IN=['food≈','food∠','crt≈','crt∠','nrg','spd','+'];
+const NN_LABELS_OUT=['turn','accel'];
+function drawNN(i){
+  const g=nnCtx, W=nnCanvas.width, H=nnCanvas.height;
+  g.clearRect(0,0,W,H);
+  if(i===-1||i>=cre.n) return;
+  const genome=cre.genome[i];
+  const inp=cre.inBuf[i];
+  // dopočítaj aktivácie pre vizualizáciu
+  for(let h=0;h<NN_HID;h++){
+    let s=genome[NN_W_IH+h]; const base=h*NN_IN;
+    for(let k=0;k<NN_IN;k++) s+=genome[base+k]*inp[k];
+    _hid[h]=Math.tanh(s);
+  }
+  const woBase=NN_W_IH+NN_B_H, boBase=woBase+NN_W_HO;
+  for(let o=0;o<NN_OUT;o++){
+    let s=genome[boBase+o]; const base=woBase+o*NN_HID;
+    for(let h=0;h<NN_HID;h++) s+=genome[base+h]*_hid[h];
+    _out[o]=Math.tanh(s);
+  }
+
+  const pad=18*nnDpr;
+  const colX=[pad, W*0.5, W-pad];
+  const inY=(k)=> pad + k*(H-2*pad)/(NN_IN-1);
+  const hidY=(k)=> pad + k*(H-2*pad)/(NN_HID-1);
+  const outY=(k)=> H*0.35 + k*(H*0.3);
+  const nodeR=6*nnDpr;
+
+  // spojenia vstup->skrytá
+  for(let h=0;h<NN_HID;h++){
+    for(let k=0;k<NN_IN;k++){
+      const w=genome[h*NN_IN+k];
+      drawConn(colX[0],inY(k),colX[1],hidY(h),w,inp[k]);
+    }
+  }
+  // spojenia skrytá->výstup
+  for(let o=0;o<NN_OUT;o++){
+    for(let h=0;h<NN_HID;h++){
+      const w=genome[woBase+o*NN_HID+h];
+      drawConn(colX[1],hidY(h),colX[2],outY(o),w,_hid[h]);
+    }
+  }
+  // uzly: vstup
+  for(let k=0;k<NN_IN;k++) drawNode(colX[0],inY(k),inp[k],nodeR,NN_LABELS_IN[k],'l');
+  // uzly: skrytá
+  for(let h=0;h<NN_HID;h++) drawNode(colX[1],hidY(h),_hid[h],nodeR,'','c');
+  // uzly: výstup
+  for(let o=0;o<NN_OUT;o++) drawNode(colX[2],outY(o),_out[o],nodeR+1,NN_LABELS_OUT[o],'r');
+
+  function drawConn(x1,y1,x2,y2,w,act){
+    const strength=Math.tanh(Math.abs(w))*Math.min(1,Math.abs(act)+0.15);
+    if(strength<0.04) return;
+    g.strokeStyle = w>=0
+      ? `rgba(92,200,255,${0.12+strength*0.7})`
+      : `rgba(255,107,138,${0.12+strength*0.7})`;
+    g.lineWidth=(0.4+strength*2.2)*nnDpr;
+    g.beginPath(); g.moveTo(x1,y1); g.lineTo(x2,y2); g.stroke();
+  }
+  function drawNode(x,y,act,r,label,side){
+    const a=clamp(Math.abs(act),0,1);
+    const pulse=r+(a*4*nnDpr);
+    const col = act>=0 ? '92,200,255' : '255,107,138';
+    const glow=g.createRadialGradient(x,y,0,x,y,pulse*1.8);
+    glow.addColorStop(0,`rgba(${col},${0.4+a*0.5})`);
+    glow.addColorStop(1,`rgba(${col},0)`);
+    g.fillStyle=glow; g.beginPath(); g.arc(x,y,pulse*1.8,0,TAU); g.fill();
+    g.fillStyle=`rgba(${col},${0.5+a*0.5})`;
+    g.beginPath(); g.arc(x,y,pulse,0,TAU); g.fill();
+    g.strokeStyle='rgba(255,255,255,0.25)'; g.lineWidth=1*nnDpr; g.stroke();
+    if(label){
+      g.fillStyle='rgba(220,230,255,0.6)';
+      g.font=`${8.5*nnDpr}px system-ui`;
+      g.textBaseline='middle';
+      if(side==='l'){ g.textAlign='right'; g.fillText(label,x-r-3*nnDpr,y); }
+      else if(side==='r'){ g.textAlign='left'; g.fillText(label,x+r+4*nnDpr,y); }
+    }
+  }
+}
+
+/* ============================================================
+   6) UI — ovládacie prvky, výber tvora, save/load
+   ============================================================ */
+let selected=-1;
+
+// --- panel parametrov: prepojenie sliderov ---
+function bindSlider(id, valId, key, fmt, scale){
+  const s=document.getElementById(id), v=document.getElementById(valId);
+  const upd=()=>{
+    let val=parseFloat(s.value);
+    P[key]= scale? val*scale : val;
+    v.textContent= fmt? fmt(val) : val;
+  };
+  s.addEventListener('input',upd); upd();
+}
+bindSlider('s_food','v_food','foodRate', v=>v.toFixed(1));
+bindSlider('s_mut','v_mut','mutation', v=>v.toFixed(0), 0.01);
+bindSlider('s_movecost','v_movecost','moveCost', v=>v.toFixed(1));
+bindSlider('s_meta','v_meta','metabolism', v=>v.toFixed(1));
+bindSlider('s_cap','v_cap','cap', v=>v.toFixed(0));
+
+// --- toggly ---
+function bindToggle(id,key,onChange){
+  const el=document.getElementById(id);
+  const upd=()=>{ el.classList.toggle('on',P[key]); };
+  el.addEventListener('click',()=>{ P[key]=!P[key]; upd(); if(onChange)onChange(); });
+  upd();
+}
+bindToggle('t_hazard','hazards');
+bindToggle('t_follow','follow');
+bindToggle('t_sensors','sensors');
+
+// --- rýchlosť ---
+document.querySelectorAll('.speedrow button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    P.speed=parseInt(b.dataset.speed);
+    document.querySelectorAll('.speedrow button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+  });
+});
+
+// --- pauza / reset ---
+const btnPause=document.getElementById('btnPause');
+btnPause.addEventListener('click',()=>{
+  P.paused=!P.paused;
+  btnPause.textContent=P.paused?'▶ Resume':'⏸ Pause';
+  btnPause.classList.toggle('on',P.paused);
+});
+document.getElementById('btnReset').addEventListener('click',()=>{ if(confirm('Reset the world and start a fresh population?')) resetWorld(); });
+
+// --- výber tvora kliknutím ---
+const inspectEl=document.getElementById('inspect');
+function selectAt(sx,sy){
+  const w=screenToWorld(sx,sy);
+  let best=-1, bestD=1e9;
+  const pickR=Math.max(16, 22/cam.zoom);
+  for(let i=0;i<cre.n;i++){
+    let dx=wrapDelta(cre.x[i]-w.x,WORLD_W);
+    let dy=wrapDelta(cre.y[i]-w.y,WORLD_H);
+    const d=dx*dx+dy*dy;
+    if(d<bestD && d<pickR*pickR){ bestD=d; best=i; }
+  }
+  selected=best;
+  inspectEl.classList.toggle('show', selected!==-1);
+}
+document.getElementById('btnDeselect').addEventListener('click',()=>{
+  selected=-1; inspectEl.classList.remove('show');
+});
+
+// --- prepínač panela ---
+const panel=document.getElementById('panel');
+document.getElementById('toggleBtn').addEventListener('click',()=> panel.classList.toggle('hidden'));
+
+/* ---------- KAMERA: pan (drag) + zoom (wheel/pinch) ---------- */
+let dragging=false, dragMoved=false, lastX=0,lastY=0, downX=0,downY=0;
+canvas.addEventListener('pointerdown',e=>{
+  dragging=true; dragMoved=false;
+  lastX=e.clientX; lastY=e.clientY; downX=e.clientX; downY=e.clientY;
+  canvas.classList.add('dragging'); canvas.setPointerCapture(e.pointerId);
+  trackPinch(e,true);
+});
+canvas.addEventListener('pointermove',e=>{
+  if(pinch.active){ trackPinch(e,false); return; }
+  if(!dragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  if(Math.abs(e.clientX-downX)+Math.abs(e.clientY-downY)>4) dragMoved=true;
+  const z=cam.zoom;
+  cam.x -= dx/z; cam.y -= dy/z;
+  cam.x=wrap(cam.x,WORLD_W); cam.y=wrap(cam.y,WORLD_H);
+  lastX=e.clientX; lastY=e.clientY;
+});
+canvas.addEventListener('pointerup',e=>{
+  if(!dragMoved && !pinch.wasActive) selectAt(e.clientX,e.clientY);
+  dragging=false; canvas.classList.remove('dragging');
+  releasePinch(e);
+});
+canvas.addEventListener('pointercancel',e=>{ dragging=false; releasePinch(e); });
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const factor=Math.exp(-e.deltaY*0.0012);
+  cam.tzoom=clamp(cam.tzoom*factor,0.12,4);
+},{passive:false});
+
+// --- pinch zoom (dva prsty) ---
+const pinch={active:false,wasActive:false,d0:0,z0:0,ptrs:new Map()};
+function trackPinch(e,down){
+  if(down) pinch.ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch.ptrs.size===2){
+    const pts=[...pinch.ptrs.values()];
+    pinch.d0=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    pinch.z0=cam.tzoom; pinch.active=true; pinch.wasActive=true; dragging=false;
+  }
+}
+canvas.addEventListener('pointermove',e=>{
+  if(pinch.ptrs.has(e.pointerId)) pinch.ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(pinch.active && pinch.ptrs.size>=2){
+    const pts=[...pinch.ptrs.values()];
+    const d=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y);
+    cam.tzoom=clamp(pinch.z0*(d/pinch.d0),0.12,4);
+  }
+});
+function releasePinch(e){
+  pinch.ptrs.delete(e.pointerId);
+  if(pinch.ptrs.size<2) pinch.active=false;
+  setTimeout(()=>{ if(pinch.ptrs.size===0) pinch.wasActive=false; },50);
+}
+
+/* ---------- SAVE / LOAD — serializácia celého stavu sveta do JSON ---------- */
+document.getElementById('btnSave').addEventListener('click',saveWorld);
+document.getElementById('btnLoad').addEventListener('click',()=>document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change',loadWorldFile);
+
+function saveWorld(){
+  const creatures=[];
+  for(let i=0;i<cre.n;i++){
+    creatures.push({
+      x:cre.x[i],y:cre.y[i],vx:cre.vx[i],vy:cre.vy[i],h:cre.heading[i],
+      e:cre.energy[i],age:cre.age[i],gen:cre.gen[i],kids:cre.kids[i],
+      lin:cre.lineage[i],hue:cre.hue[i],
+      g:Array.from(cre.genome[i]),
+    });
+  }
+  const foods=[];
+  for(let i=0;i<food.n;i++) foods.push([food.x[i],food.y[i],food.poison[i]]);
+  const state={
+    version:1, simTime, maxGen, lineageCounter,
+    params:{...P}, noise:Array.from(noiseGrid),
+    cam:{x:cam.x,y:cam.y,zoom:cam.tzoom},
+    creatures, foods,
+  };
+  const blob=new Blob([JSON.stringify(state)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=`neuroevo_${Math.floor(simTime)}s_gen${maxGen}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function loadWorldFile(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const s=JSON.parse(r.result);
+      applyState(s);
+    }catch(err){ alert('Failed to load file: '+err.message); }
+  };
+  r.readAsText(f);
+  ev.target.value='';
+}
+
+function applyState(s){
+  cre.n=0; food.n=0; selected=-1;
+  simTime=s.simTime||0; maxGen=s.maxGen||0; lineageCounter=s.lineageCounter||0;
+  if(s.noise && s.noise.length===noiseGrid.length) noiseGrid.set(s.noise);
+  if(s.params){
+    Object.assign(P,s.params);
+    syncUIFromParams();
+  }
+  if(s.cam){ cam.x=s.cam.x; cam.y=s.cam.y; cam.tzoom=s.cam.zoom; cam.zoom=s.cam.zoom; }
+  for(const c of s.creatures){
+    const i=spawnCreature(c.x,c.y,new Float32Array(c.g),c.gen,c.hue,c.lin);
+    if(i===-1) break;
+    cre.vx[i]=c.vx; cre.vy[i]=c.vy; cre.heading[i]=c.h;
+    cre.energy[i]=c.e; cre.age[i]=c.age; cre.kids[i]=c.kids;
+  }
+  for(const fd of s.foods) spawnFood(fd[0],fd[1],fd[2]);
+  inspectEl.classList.remove('show');
+}
+
+// Premietni hodnoty P do UI (po načítaní)
+function syncUIFromParams(){
+  document.getElementById('s_food').value=P.foodRate;
+  document.getElementById('v_food').textContent=P.foodRate.toFixed(1);
+  document.getElementById('s_mut').value=Math.round(P.mutation*100);
+  document.getElementById('v_mut').textContent=Math.round(P.mutation*100);
+  document.getElementById('s_movecost').value=P.moveCost;
+  document.getElementById('v_movecost').textContent=P.moveCost.toFixed(1);
+  document.getElementById('s_meta').value=P.metabolism;
+  document.getElementById('v_meta').textContent=P.metabolism.toFixed(1);
+  document.getElementById('s_cap').value=P.cap;
+  document.getElementById('v_cap').textContent=P.cap;
+  document.getElementById('t_hazard').classList.toggle('on',P.hazards);
+  document.getElementById('t_follow').classList.toggle('on',P.follow);
+  document.getElementById('t_sensors').classList.toggle('on',P.sensors);
+  document.querySelectorAll('.speedrow button').forEach(x=>{
+    x.classList.toggle('on', parseInt(x.dataset.speed)===P.speed);
+  });
+  btnPause.textContent=P.paused?'▶ Resume':'⏸ Pause';
+  btnPause.classList.toggle('on',P.paused);
+}
+
+/* ---------- INŠPEKTOR vybraného tvora: textové info ---------- */
+function updateInspector(){
+  if(selected===-1||selected>=cre.n){ inspectEl.classList.remove('show'); return; }
+  inspectEl.classList.add('show');
+  const i=selected;
+  document.getElementById('i_gen').textContent=cre.gen[i];
+  document.getElementById('i_age').textContent=cre.age[i].toFixed(0)+'s';
+  document.getElementById('i_energy').textContent=cre.energy[i].toFixed(0);
+  document.getElementById('i_speed').textContent=Math.hypot(cre.vx[i],cre.vy[i]).toFixed(0);
+  document.getElementById('i_kids').textContent=cre.kids[i];
+  document.getElementById('i_lin').textContent=cre.lineage[i];
+  const sw=document.getElementById('i_swatch');
+  sw.style.background=`hsl(${cre.hue[i]},80%,62%)`;
+  sw.style.color=`hsl(${cre.hue[i]},80%,62%)`;
+}
+
+/* ============================================================
+   RESET / INICIALIZÁCIA SVETA
+   ============================================================ */
+function resetWorld(){
+  cre.n=0; food.n=0; selected=-1; simTime=0; maxGen=0; lineageCounter=0;
+  spawnAcc=0; foodEatenWindow=0; deathCount=0; deathLifeSum=0;
+  hist.head=0; hist.count=0; statTimer=0;
+  regenNoise();
+  // počiatočná populácia s náhodnými mozgami (evolúcia funguje už teraz!)
+  const N0=150;
+  for(let i=0;i<N0;i++){
+    const x=Math.random()*WORLD_W, y=Math.random()*WORLD_H;
+    const hue=Math.random()*360;
+    spawnCreature(x,y,randomGenome(),0,hue,lineageCounter++);
+  }
+  // počiatočné jedlo
+  for(let i=0;i<1400;i++){
+    for(let t=0;t<5;t++){
+      const x=Math.random()*WORLD_W,y=Math.random()*WORLD_H;
+      if(Math.random()<foodDensity(x,y,0)){ spawnFood(x,y,false); break; }
+    }
+  }
+  inspectEl.classList.remove('show');
+}
+
+/* ============================================================
+   7) LOOP — hlavná slučka: fyzika (×speed) + render (1×)
+   ============================================================ */
+let lastT=performance.now();
+let fps=60, fpsSmooth=60;
+const FIXED_DT=1/60;
+
+function frame(now){
+  const realDt=Math.min(0.1,(now-lastT)/1000);
+  lastT=now;
+  fps=1/Math.max(1e-4,realDt);
+  fpsSmooth=lerp(fpsSmooth,fps,0.1);
+
+  if(!P.paused){
+    // viac fyzikálnych krokov za frame podľa násobiča rýchlosti
+    const steps=P.speed;
+    for(let s=0;s<steps;s++){
+      step(FIXED_DT);
+      sampleStats(FIXED_DT);
+    }
+    // občerstvi textúru hustoty jedla (lacné, nie každý frame)
+    densAccum+=realDt*steps;
+    if(densAccum>0.25){ densAccum=0; updateDensityTexture(); }
+  }
+
+  render();
+  renderCharts();
+  if(selected!==-1){ updateInspector(); drawNN(selected); }
+
+  // stavový riadok
+  document.getElementById('sb_pop').textContent=cre.n;
+  document.getElementById('sb_gen').textContent=maxGen;
+  document.getElementById('sb_food').textContent=food.n;
+  document.getElementById('sb_fps').textContent=Math.round(fpsSmooth);
+  const mm=Math.floor(simTime/60), ss=Math.floor(simTime%60);
+  document.getElementById('sb_time').textContent=mm+':'+(ss<10?'0':'')+ss;
+
+  requestAnimationFrame(frame);
+}
+
+/* ---------- štart ---------- */
+function boot(){
+  initCharts();
+  nnDpr=setupNNCanvas();
+  updateDensityTexture();
+  resetWorld();
+  requestAnimationFrame(frame);
+}
+addEventListener('resize',()=>{ initCharts(); nnDpr=setupNNCanvas(); });
+boot();
+</script>
+</body>
+</html>
